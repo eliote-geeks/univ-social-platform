@@ -18,3 +18,7 @@ Socle du nouveau réseau social universitaire. Ce produit est distinct de Campus
 5. Messagerie, notifications, modération, supervision et tests de charge.
 
 Les manifestes de ce dossier sont la source de vérité de l’infrastructure. Aucun secret n’est stocké dans Git.
+
+## Sauvegardes au démarrage
+
+Les sauvegardes PostgreSQL sont exécutées chaque nuit dans un volume séparé du volume de la base, avec une rétention de 14 jours. Elles restent toutefois sur le même VPS : elles protègent contre une erreur logique ou applicative, **pas** contre la perte, le vol ou la compromission du serveur. Une réplication chiffrée hors serveur reste obligatoire avant une ouverture publique.
