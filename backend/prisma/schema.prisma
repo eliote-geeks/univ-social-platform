@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlatformRole {
+  MEMBER
+  MODERATOR
+  UNIVERSITY_ADMIN
+  PLATFORM_ADMIN
+}
+
+enum AffiliationRole {
+  STUDENT
+  TEACHER
+  STAFF
+  ALUMNI
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+model University {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  shortName   String?
+  countryCode String        @default("CM")
+  city        String?
+  logoUrl     String?
+  coverUrl    String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  campuses    Campus[]
+  faculties   Faculty[]
+  programs    Program[]
+  affiliations Affiliation[]
+}
+
+model Campus {
+  id           String      @id @default(cuid())
+  universityId String
+  slug         String
+  name         String
+  city         String?
+  university   University  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  affiliations Affiliation[]
+  @@unique([universityId, slug])
+}
+
+model Faculty {
+  id           String      @id @default(cuid())
+  universityId String
+  slug         String
+  name         String
+  university   University  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  programs     Program[]
+  affiliations Affiliation[]
+  @@unique([universityId, slug])
+}
+
+model Program {
+  id           String      @id @default(cuid())
+  universityId String
+  facultyId    String?
+  slug         String
+  name         String
+  level        String?
+  university   University  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  faculty      Faculty?    @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  affiliations Affiliation[]
+  @@unique([universityId, slug])
+}
+
+model User {
+  id              String       @id @default(cuid())
+  keycloakSubject String       @unique
+  email           String       @unique
+  username        String       @unique
+  displayName     String
+  firstName       String?
+  lastName        String?
+  platformRole    PlatformRole @default(MEMBER)
+  avatarUrl       String?
+  bio             String?      @db.VarChar(500)
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  affiliations    Affiliation[]
+}
+
+model Affiliation {
+  id                 String             @id @default(cuid())
+  userId             String
+  universityId       String
+  campusId           String?
+  facultyId          String?
+  programId          String?
+  role               AffiliationRole
+  studentIdentifier  String?
+  level              String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university         University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  campus             Campus?            @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  faculty            Faculty?           @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  program            Program?           @relation(fields: [programId], references: [id], onDelete: SetNull)
+  @@unique([userId, universityId])
+  @@index([universityId, verificationStatus])
+}
