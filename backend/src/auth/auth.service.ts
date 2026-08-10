@@ -1,0 +1,74 @@
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as argon2 from 'argon2';
+import { PrismaService } from '../prisma/prisma.service';
+import { LoginDto, RegisterDto } from './auth.dto';
+
+type SessionUser = { id: string; email: string; username: string; displayName: string };
+
+@Injectable()
+export class AuthService {
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
+
+  async register(dto: RegisterDto, ipAddress?: string, userAgent?: string) {
+    const email = dto.email.trim().toLowerCase();
+    const username = dto.username.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({ where: { OR: [{ email }, { username }] } });
+    if (existing) throw new ConflictException('Cet e-mail ou identifiant est déjà utilisé');
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        username,
+        displayName: dto.displayName.trim(),
+        passwordHash: await argon2.hash(dto.password, { type: argon2.argon2id }),
+      },
+    });
+    return this.createSession(user, ipAddress, userAgent);
+  }
+
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
+    if (!user || user.status !== 'ACTIVE' || !(await argon2.verify(user.passwordHash, dto.password))) {
+      throw new UnauthorizedException('E-mail ou mot de passe incorrect');
+    }
+    return this.createSession(user, ipAddress, userAgent);
+  }
+
+  async refresh(refreshToken: string, ipAddress?: string, userAgent?: string) {
+    let payload: { sub: string; sid: string; type: string };
+    try {
+      payload = await this.jwt.verifyAsync(refreshToken);
+    } catch {
+      throw new UnauthorizedException('Session invalide ou expirée');
+    }
+    if (payload.type !== 'refresh') throw new UnauthorizedException('Session invalide');
+
+    const session = await this.prisma.session.findUnique({ include: { user: true }, where: { id: payload.sid } });
+    if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Session invalide ou expirée');
+    }
+    if (!(await argon2.verify(session.refreshTokenHash, refreshToken))) {
+      await this.prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+      throw new UnauthorizedException('Session invalide');
+    }
+
+    await this.prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+    return this.createSession(session.user, ipAddress, userAgent);
+  }
+
+  logout(sessionId: string) {
+    return this.prisma.session.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+  }
+
+  private async createSession(user: SessionUser, ipAddress?: string, userAgent?: string) {
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const session = await this.prisma.session.create({
+      data: { userId: user.id, refreshTokenHash: 'pending', expiresAt, ipAddress, userAgent },
+    });
+    const accessToken = await this.jwt.signAsync({ sub: user.id, sid: session.id, type: 'access' }, { expiresIn: '15m' });
+    const refreshToken = await this.jwt.signAsync({ sub: user.id, sid: session.id, type: 'refresh' }, { expiresIn: '30d' });
+    await this.prisma.session.update({ where: { id: session.id }, data: { refreshTokenHash: await argon2.hash(refreshToken) } });
+    return { accessToken, refreshToken, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName } };
+  }
+}

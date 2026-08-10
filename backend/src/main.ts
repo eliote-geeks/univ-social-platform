@@ -20,6 +20,7 @@ async function bootstrap() {
     .setTitle('Univ Social API')
     .setDescription('API privée du réseau social universitaire')
     .setVersion('0.1.0')
+    .addBearerAuth()
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
   await app.listen(Number(process.env.PORT ?? 4000), '0.0.0.0');
