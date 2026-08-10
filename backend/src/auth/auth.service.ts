@@ -6,6 +6,11 @@ import { LoginDto, RegisterDto } from './auth.dto';
 
 type SessionUser = { id: string; email: string; username: string; displayName: string };
 
+// Hash bidon utilisé pour égaliser le temps de réponse quand l'utilisateur n'existe pas,
+// afin qu'un attaquant ne puisse pas déduire par le timing si un e-mail est enregistré.
+const DUMMY_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHRzb21lc2FsdA$X2QhU4tXf3XyaLZfF6P1XwZzHhslQ1hKQd0RY6JKV6E';
+
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
@@ -29,7 +34,10 @@ export class AuthService {
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
-    if (!user || user.status !== 'ACTIVE' || !(await argon2.verify(user.passwordHash, dto.password))) {
+    // On vérifie toujours un hash (réel ou bidon) pour que le temps de réponse ne révèle pas
+    // si l'e-mail existe en base (protection contre l'énumération de comptes par timing).
+    const passwordOk = await argon2.verify(user?.passwordHash ?? DUMMY_HASH, dto.password).catch(() => false);
+    if (!user || user.status !== 'ACTIVE' || !passwordOk) {
       throw new UnauthorizedException('E-mail ou mot de passe incorrect');
     }
     return this.createSession(user, ipAddress, userAgent);

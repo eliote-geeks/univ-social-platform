@@ -11,12 +11,15 @@ Université → Campus → Faculté → Filière/Programme
                     ↘ Affiliation utilisateur vérifiable
 ```
 
-Les routes actuelles sont seulement de lecture :
+Routes actuellement implémentées (lecture) :
 
 - `GET /api/v1/health/live`
 - `GET /api/v1/health/ready`
+- `GET /api/v1/users/:username`
+
+Routes planifiées, **pas encore implémentées** (module `universities` à créer) :
+
 - `GET /api/v1/universities`
 - `GET /api/v1/universities/:slug`
-- `GET /api/v1/users/:username`
 
 Les écritures, l’administration universitaire et la synchronisation du premier profil seront ajoutées uniquement après le branchement OIDC/Keycloak et les contrôles de rôles.
