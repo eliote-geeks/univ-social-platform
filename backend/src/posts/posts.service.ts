@@ -25,6 +25,21 @@ export class PostsService {
     return { items, nextCursor: next?.id ?? null };
   }
 
+  async feedFollowing(userId: string, cursor?: string) {
+    const items = await this.prisma.post.findMany({
+      where: {
+        visibility: { in: ['PUBLIC', 'FOLLOWERS'] },
+        author: { followers: { some: { followerId: userId } } },
+      },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: POST_INCLUDE,
+    });
+    const next = items.length > 20 ? items.pop() : undefined;
+    return { items, nextCursor: next?.id ?? null };
+  }
+
   async create(userId: string, dto: CreatePostDto) {
     const body = dto.body?.trim();
     if (!body && !dto.media?.length) throw new BadRequestException('Une publication doit contenir un texte ou un média');

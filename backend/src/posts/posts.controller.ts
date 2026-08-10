@@ -22,6 +22,12 @@ export class PostsController {
     return this.posts.feed(query.cursor);
   }
 
+  @Get('feed/following')
+  @UseGuards(JwtAuthGuard)
+  feedFollowing(@CurrentUser() principal: AuthPrincipal, @Query() query: FeedQueryDto) {
+    return this.posts.feedFollowing(principal.sub, query.cursor);
+  }
+
   @Post('posts')
   @UseGuards(JwtAuthGuard)
   create(@CurrentUser() principal: AuthPrincipal, @Body() dto: CreatePostDto) {
