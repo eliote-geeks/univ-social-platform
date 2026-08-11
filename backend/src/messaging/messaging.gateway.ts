@@ -10,7 +10,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { IsString, MaxLength, MinLength } from 'class-validator';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
 import { AuthPrincipal } from '../auth/auth.types';
 import { MessagingService } from './messaging.service';
 import { MessagingExceptionFilter } from './ws-exception.filter';
@@ -42,7 +42,10 @@ const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map((v) => v.tri
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @UseFilters(new MessagingExceptionFilter())
 export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() server!: Server;
+  // Nest injecte ici la Namespace socket.io "/ws/messaging" (pas le Server racine) puisque
+  // le gateway déclare une `namespace` dans son décorateur ; Namespace.sockets est bien une
+  // Map<socketId, Socket> (contrairement à Server.sockets, qui pointe vers la namespace "/").
+  @WebSocketServer() server!: Namespace;
   private readonly logger = new Logger(MessagingGateway.name);
 
   constructor(
@@ -98,5 +101,25 @@ export class MessagingGateway implements OnGatewayConnection, OnGatewayDisconnec
     if (!userId) return;
     const result = await this.messaging.markRead(data.conversationId, userId);
     this.server.to(roomName(data.conversationId)).emit('conversation:read', { conversationId: data.conversationId, userId, readAt: result.readAt });
+  }
+
+  // Appelé par MessagingController après une mutation REST (création/renommage de groupe,
+  // ajout/retrait de membre) pour que les clients connectés voient le changement en direct
+  // sans avoir à re-poller — les endpoints REST eux-mêmes ne passent jamais par le gateway.
+  broadcast(conversationId: string, event: string, payload: unknown) {
+    this.server.to(roomName(conversationId)).emit(event, payload);
+  }
+
+  // Force la sortie de room des sockets d'un utilisateur qu'on vient d'exclure (ou qui vient de
+  // quitter) un groupe : sans ça, un socket déjà rejoint continuerait de recevoir les messages
+  // de la room jusqu'à sa prochaine reconnexion.
+  evictUser(conversationId: string, userId: string) {
+    const room = roomName(conversationId);
+    for (const socket of this.server.sockets.values()) {
+      if (socket.data.userId === userId && socket.rooms.has(room)) {
+        socket.leave(room);
+        socket.emit('conversation:removed', { conversationId });
+      }
+    }
   }
 }

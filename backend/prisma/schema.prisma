@@ -172,9 +172,17 @@ model Conversation {
   @@index([lastMessageAt])
 }
 
+enum ConversationRole {
+  OWNER
+  MEMBER
+}
+
 model ConversationParticipant {
   conversationId String
   userId         String
+  // OWNER uniquement pertinent pour les conversations de groupe : gère les membres et le
+  // titre. Sur une conversation directe (1:1) tout le monde reste MEMBER, il n'y a rien à gérer.
+  role           ConversationRole @default(MEMBER)
   joinedAt       DateTime     @default(now())
   // Position de lecture de l'utilisateur : tout message postérieur est considéré non lu.
   lastReadAt     DateTime?
