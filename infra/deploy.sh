@@ -42,7 +42,10 @@ if [[ -n "$(git status --porcelain -- "$MANIFEST")" ]]; then
 fi
 
 echo "==> Build ${image}"
-docker build -t "$image" "$BACKEND_DIR"
+# --network=host : le bridge docker par défaut coupe les connexions longues vers registry.npmjs.org
+# dans cet environnement (ECONNRESET / EIDLETIMEOUT observés en cours de build) ; le réseau host
+# contourne ce NAT/conntrack pour les étapes RUN du build.
+docker build --network=host -t "$image" "$BACKEND_DIR"
 
 echo "==> Transfert de l'image vers ${REMOTE_HOST} (containerd, namespace k8s.io)"
 docker save "$image" | ssh "$REMOTE_HOST" "sudo k3s ctr images import -"
