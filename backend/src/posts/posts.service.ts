@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ReactionType } from '@prisma/client';
 import { MediaService } from '../media/media.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto, CreatePostDto } from './posts.dto';
 
@@ -15,6 +16,7 @@ export class PostsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async feed(cursor?: string) {
@@ -61,7 +63,7 @@ export class PostsService {
         )
       : undefined;
 
-    return this.prisma.post.create({
+    const post = await this.prisma.post.create({
       data: {
         authorId: userId,
         body: body || null,
@@ -70,6 +72,9 @@ export class PostsService {
       },
       include: POST_INCLUDE,
     });
+
+    if (body) await this.notifications.notifyMentions(userId, body, { postId: post.id });
+    return post;
   }
 
   async findOne(id: string) {
@@ -82,22 +87,40 @@ export class PostsService {
   }
 
   async comment(postId: string, userId: string, dto: CreateCommentDto) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
     if (!post) throw new NotFoundException('Publication introuvable');
+    let parent: { id: string; authorId: string } | null = null;
     if (dto.parentId) {
-      const parent = await this.prisma.comment.findFirst({ where: { id: dto.parentId, postId }, select: { id: true } });
+      parent = await this.prisma.comment.findFirst({ where: { id: dto.parentId, postId }, select: { id: true, authorId: true } });
       if (!parent) throw new BadRequestException('Commentaire parent invalide');
     }
-    return this.prisma.comment.create({
-      data: { postId, authorId: userId, parentId: dto.parentId, body: dto.body.trim() },
+
+    const body = dto.body.trim();
+    const comment = await this.prisma.comment.create({
+      data: { postId, authorId: userId, parentId: dto.parentId, body },
       include: { author: { select: { username: true, displayName: true, avatarUrl: true } } },
     });
+
+    // Réponse -> on notifie l'auteur du commentaire parent ; commentaire de premier niveau ->
+    // l'auteur de la publication. notifyComment ignore déjà l'auto-notification.
+    const recipientId = parent ? parent.authorId : post.authorId;
+    await this.notifications.notifyComment(recipientId, userId, postId, comment.id);
+    await this.notifications.notifyMentions(userId, body, { postId, commentId: comment.id });
+
+    return comment;
   }
 
   async react(postId: string, userId: string, type: ReactionType) {
-    const exists = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
-    if (!exists) throw new NotFoundException('Publication introuvable');
-    return this.prisma.reaction.upsert({ where: { postId_userId: { postId, userId } }, create: { postId, userId, type }, update: { type } });
+    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    if (!post) throw new NotFoundException('Publication introuvable');
+    const existing = await this.prisma.reaction.findUnique({ where: { postId_userId: { postId, userId } } });
+    const reaction = await this.prisma.reaction.upsert({
+      where: { postId_userId: { postId, userId } },
+      create: { postId, userId, type },
+      update: { type },
+    });
+    if (!existing) await this.notifications.notifyReaction(post.authorId, userId, postId);
+    return reaction;
   }
 
   async removeReaction(postId: string, userId: string) {

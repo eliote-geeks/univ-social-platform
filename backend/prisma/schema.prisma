@@ -33,6 +33,13 @@ enum ReactionType {
   ANGRY
 }
 
+enum NotificationType {
+  REACTION
+  COMMENT
+  FOLLOW
+  MENTION
+}
+
 model User {
   id            String        @id @default(cuid())
   email         String        @unique
@@ -52,6 +59,8 @@ model User {
   reactions     Reaction[]
   following     Follow[]      @relation("following")
   followers     Follow[]      @relation("followers")
+  notificationsReceived Notification[] @relation("notificationsReceived")
+  notificationsSent     Notification[] @relation("notificationsSent")
 }
 
 model Session {
@@ -78,6 +87,7 @@ model Post {
   media       PostMedia[]
   comments    Comment[]
   reactions   Reaction[]
+  notifications Notification[]
   @@index([publishedAt])
   @@index([authorId, publishedAt])
 }
@@ -107,6 +117,7 @@ model Comment {
   author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parent    Comment?  @relation("comment_replies", fields: [parentId], references: [id], onDelete: Cascade)
   replies   Comment[] @relation("comment_replies")
+  notifications Notification[]
   @@index([postId, createdAt])
 }
 
@@ -121,10 +132,27 @@ model Reaction {
 }
 
 model Follow {
-  followerId  String   
+  followerId  String
   followingId String
   createdAt   DateTime @default(now())
   follower    User     @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
   following   User     @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
   @@id([followerId, followingId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  recipientId String
+  actorId     String
+  type        NotificationType
+  postId      String?
+  commentId   String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+  recipient   User             @relation("notificationsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User             @relation("notificationsSent", fields: [actorId], references: [id], onDelete: Cascade)
+  post        Post?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment     Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  @@index([recipientId, createdAt])
+  @@index([recipientId, readAt])
 }

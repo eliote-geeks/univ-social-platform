@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateProfileDto } from '../auth/auth.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const PROFILE_SUMMARY_SELECT = {
@@ -10,7 +11,10 @@ const PROFILE_SUMMARY_SELECT = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private async requireByUsername(username: string) {
     const user = await this.prisma.user.findUnique({ where: { username }, select: { id: true, username: true } });
@@ -53,11 +57,15 @@ export class UsersService {
   async follow(followerId: string, targetUsername: string) {
     const target = await this.requireByUsername(targetUsername);
     if (target.id === followerId) throw new BadRequestException('Impossible de se suivre soi-même');
+    const existing = await this.prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId, followingId: target.id } },
+    });
     await this.prisma.follow.upsert({
       where: { followerId_followingId: { followerId, followingId: target.id } },
       create: { followerId, followingId: target.id },
       update: {},
     });
+    if (!existing) await this.notifications.notifyFollow(target.id, followerId);
     return { following: true };
   }
 
