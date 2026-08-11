@@ -35,7 +35,11 @@ spec:
   limits:
     - type: Container
       min:
-        cpu: 50m
+        # 10m et non 50m : les pods solveurs ACME (challenge HTTP-01 de cert-manager, éphémères,
+        # un par certificat) ne demandent que 10m cpu — un plancher plus haut bloque
+        # silencieusement toute émission de certificat dans ce namespace (vécu : Ingress minio-media
+        # restée sans TLS pendant 100+ min, cert-manager rejeté par ce LimitRange).
+        cpu: 10m
         memory: 64Mi
       defaultRequest:
         cpu: 100m
