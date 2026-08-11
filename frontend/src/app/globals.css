@@ -1,0 +1,12 @@
+/* Le thème Webestica (public/webestica/css/style.css) fournit déjà un reset complet basé sur
+   Bootstrap 5 — pas de reset custom ici pour ne pas entrer en conflit avec ses classes utilitaires
+   (marges, couleurs de lien, etc. gérées par .m-0, .text-reset, etc. dans les composants). */
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Petites captures d'écran sans image de fond dédiée pour l'instant : fond neutre du thème. */
+.h-50px {
+  height: 50px;
+}

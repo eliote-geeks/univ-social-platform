@@ -3,6 +3,8 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthPrincipal } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { OptionalUser } from '../auth/optional-user.decorator';
 import { CreateCommentDto, CreatePostDto, SetReactionDto } from './posts.dto';
 import { PostsService } from './posts.service';
 
@@ -18,8 +20,9 @@ export class PostsController {
   constructor(private readonly posts: PostsService) {}
 
   @Get('feed')
-  feed(@Query() query: FeedQueryDto) {
-    return this.posts.feed(query.cursor);
+  @UseGuards(OptionalJwtAuthGuard)
+  feed(@OptionalUser() principal: AuthPrincipal | undefined, @Query() query: FeedQueryDto) {
+    return this.posts.feed(query.cursor, principal?.sub);
   }
 
   @Get('feed/following')
@@ -35,8 +38,9 @@ export class PostsController {
   }
 
   @Get('posts/:id')
-  findOne(@Param('id') id: string) {
-    return this.posts.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(@Param('id') id: string, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.posts.findOne(id, principal?.sub);
   }
 
   @Post('posts/:id/comments')

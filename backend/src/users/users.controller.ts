@@ -5,6 +5,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthPrincipal } from '../auth/auth.types';
 import { UpdateProfileDto } from '../auth/auth.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { OptionalUser } from '../auth/optional-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UsersService } from './users.service';
@@ -38,8 +40,9 @@ export class UsersController {
   }
 
   @Get(':username')
-  publicProfile(@Param('username') username: string) {
-    return this.users.publicProfile(username);
+  @UseGuards(OptionalJwtAuthGuard)
+  publicProfile(@Param('username') username: string, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.users.publicProfile(username, principal?.sub);
   }
 
   @Post(':username/follow')

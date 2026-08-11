@@ -22,19 +22,24 @@ export class UsersService {
     return user;
   }
 
-  async publicProfile(username: string) {
+  async publicProfile(username: string, viewerId?: string) {
     const user = await this.prisma.user.findUnique({
       where: { username },
       select: {
+        id: true,
         username: true,
         displayName: true,
         avatarUrl: true,
         bio: true,
         _count: { select: { followers: true, following: true, posts: true } },
+        // Ne ramène (au plus) que la ligne de suivi du visiteur courant, jamais celle des
+        // autres — d'où isFollowing dérivé ci-dessous plutôt qu'exposé tel quel.
+        ...(viewerId ? { followers: { where: { followerId: viewerId }, select: { followerId: true } } } : {}),
       },
     });
     if (!user) throw new NotFoundException('Profil introuvable');
-    return user;
+    const { followers, id, ...rest } = user as typeof user & { followers?: { followerId: string }[] };
+    return { ...rest, isFollowing: !!followers?.length, isSelf: viewerId === id };
   }
 
   async me(userId: string) {

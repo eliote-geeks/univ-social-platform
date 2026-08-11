@@ -13,6 +13,19 @@ const POST_INCLUDE = {
   _count: { select: { reactions: true, comments: true } },
 };
 
+// À injecter en plus de POST_INCLUDE quand on connaît le visiteur : ne ramène (au plus) que SA
+// propre réaction, jamais celles des autres — reste donc valable même sur un fil public.
+function myReactionInclude(viewerId?: string) {
+  return viewerId ? { reactions: { where: { userId: viewerId }, select: { type: true } } } : {};
+}
+
+// Aplati le tableau `reactions` (0 ou 1 ligne, la sienne) renvoyé par myReactionInclude en un
+// simple champ myReaction, pour ne pas exposer la forme interne "tableau filtré" au client.
+function withMyReaction<T extends { reactions?: { type: ReactionType }[] }>(post: T) {
+  const { reactions, ...rest } = post;
+  return { ...rest, myReaction: reactions?.[0]?.type ?? null };
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -21,16 +34,16 @@ export class PostsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async feed(cursor?: string) {
+  async feed(cursor?: string, viewerId?: string) {
     const items = await this.prisma.post.findMany({
       where: { visibility: 'PUBLIC' },
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: 21,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: POST_INCLUDE,
+      include: { ...POST_INCLUDE, ...myReactionInclude(viewerId) },
     });
     const next = items.length > 20 ? items.pop() : undefined;
-    return { items, nextCursor: next?.id ?? null };
+    return { items: items.map(withMyReaction), nextCursor: next?.id ?? null };
   }
 
   async feedFollowing(userId: string, cursor?: string) {
@@ -42,10 +55,10 @@ export class PostsService {
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: 21,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: POST_INCLUDE,
+      include: { ...POST_INCLUDE, ...myReactionInclude(userId) },
     });
     const next = items.length > 20 ? items.pop() : undefined;
-    return { items, nextCursor: next?.id ?? null };
+    return { items: items.map(withMyReaction), nextCursor: next?.id ?? null };
   }
 
   // context n'est jamais renseigné depuis le DTO public POST /posts (qui n'expose pas ces
@@ -114,13 +127,17 @@ export class PostsService {
     return { items, nextCursor: next?.id ?? null };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, viewerId?: string) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      include: { ...POST_INCLUDE, comments: { where: { parentId: null }, orderBy: { createdAt: 'asc' }, include: { author: { select: { username: true, displayName: true, avatarUrl: true } }, replies: { include: { author: { select: { username: true, displayName: true, avatarUrl: true } } } } } } },
+      include: {
+        ...POST_INCLUDE,
+        ...myReactionInclude(viewerId),
+        comments: { where: { parentId: null }, orderBy: { createdAt: 'asc' }, include: { author: { select: { username: true, displayName: true, avatarUrl: true } }, replies: { include: { author: { select: { username: true, displayName: true, avatarUrl: true } } } } } },
+      },
     });
     if (!post || post.visibility === 'ONLY_ME') throw new NotFoundException('Publication introuvable');
-    return post;
+    return withMyReaction(post);
   }
 
   async comment(postId: string, userId: string, dto: CreateCommentDto) {
