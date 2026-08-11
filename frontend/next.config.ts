@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // Image de production minimale (copie uniquement les fichiers nécessaires à l'exécution,
+  // sans le node_modules complet) — cf. frontend/Dockerfile.
+  output: "standalone",
 };
 
 export default nextConfig;

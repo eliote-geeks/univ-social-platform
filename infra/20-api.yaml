@@ -53,7 +53,7 @@ spec:
             - name: NODE_ENV
               value: production
             - name: CORS_ORIGINS
-              value: ""
+              value: "https://univ-social.79.137.32.27.nip.io"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -106,3 +106,51 @@ spec:
               port: http
             initialDelaySeconds: 20
             periodSeconds: 20
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: univ-social
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api-univ-social.79.137.32.27.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 4000
+  tls:
+    - hosts: [api-univ-social.79.137.32.27.nip.io]
+      secretName: api-univ-social-tls
+---
+# Sans cette règle, default-deny-all (00-foundation.yaml) bloque Traefik -> pod api : l'Ingress
+# ci-dessus renverrait systématiquement 502. Même patron que allow-ingress-to-media (15-media.yaml).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: univ-social
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 4000
