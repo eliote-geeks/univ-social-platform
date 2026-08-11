@@ -81,3 +81,30 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+---
+# Sans cette règle, default-deny-all bloque aussi les pods solveurs ACME de cert-manager
+# (acme.cert-manager.io/http01-solver=true, créés/détruits automatiquement par certificat) :
+# Traefik ne peut pas les joindre pour la validation HTTP-01 -> 502 -> aucun certificat n'est
+# jamais émis dans ce namespace. Ces pods n'ont pas le label part-of=univ-social donc les
+# autres règles ne les couvrent pas.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-acme-solver
+  namespace: univ-social
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 8089
