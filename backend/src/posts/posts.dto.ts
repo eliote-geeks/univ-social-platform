@@ -1,13 +1,16 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, IsUrl, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { MediaType, PostVisibility, ReactionType } from '@prisma/client';
 
 export class CreateMediaDto {
   @IsEnum(MediaType)
   type!: MediaType;
 
-  @IsUrl({ protocols: ['https'] })
-  url!: string;
+  // Clé d'objet renvoyée par POST /media/upload-url après un upload réussi vers MinIO —
+  // jamais une URL arbitraire fournie par le client (cf. PostsService.create).
+  @IsString()
+  @MaxLength(512)
+  key!: string;
 
   @IsOptional()
   @IsString()

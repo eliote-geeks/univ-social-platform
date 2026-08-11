@@ -1,0 +1,250 @@
+# Stockage média (photos/vidéos des publications) via MinIO, compatible S3.
+#
+# Le secret `media-credentials` (clés root-user / root-password) n'est pas dans ce fichier,
+# comme app-database / auth-credentials / data-credentials : il est créé directement sur le
+# cluster via `kubectl create secret generic`, jamais commité en clair.
+#
+# Flux d'upload : le client demande une URL PUT pré-signée à l'API (POST /api/v1/media/upload-url),
+# uploade le fichier directement vers MinIO via cette URL, puis référence la clé d'objet obtenue
+# lors de la création du post. L'API ne relaie jamais les octets du fichier.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: univ-social
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: univ-social
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: univ-social
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: univ-social
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: univ-social
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # un seul volume RWO : jamais deux pods minio en même temps
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/part-of: univ-social
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          imagePullPolicy: IfNotPresent
+          args: [server, /data]
+          ports:
+            - name: s3
+              containerPort: 9000
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: media-credentials
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-credentials
+                  key: root-password
+            - name: MINIO_BROWSER
+              value: "off"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # MinIO écrit du cache local hors /data
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+---
+# Job à usage unique : crée le bucket `media` et le rend accessible en lecture anonyme
+# (les objets ont des clés imprévisibles ; l'écriture reste protégée par les identifiants root).
+# Si `kubectl apply` ne relance pas le Job (déjà terminé), c'est normal — le bucket persiste sur
+# le volume. Pour le relancer (ex. changement de politique) : `kubectl delete job minio-bucket-init -n univ-social` puis ré-appliquer.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: univ-social
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio-bucket-init
+        app.kubernetes.io/part-of: univ-social
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: media-credentials
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: media-credentials
+                  key: root-password
+          command: [sh, -ec]
+          args:
+            - >-
+              mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD";
+              mc mb --ignore-existing local/media;
+              mc anonymous set download local/media
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-media
+  namespace: univ-social
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: media-univ-social.79.137.32.27.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9000
+  tls:
+    - hosts: [media-univ-social.79.137.32.27.nip.io]
+      secretName: media-univ-social-tls
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-egress-to-media
+  namespace: univ-social
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: univ-social
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-media
+  namespace: univ-social
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  policyTypes: [Ingress]
+  ingress:
+    # Pods de l'app (API, jobs mc) en accès direct au port S3
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: univ-social
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Traefik (Ingress public) pour servir les uploads/téléchargements aux navigateurs
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 9000

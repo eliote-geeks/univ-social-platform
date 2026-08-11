@@ -19,7 +19,7 @@ spec:
     requests.memory: 10Gi
     limits.cpu: "8"
     limits.memory: 16Gi
-    requests.storage: 50Gi
+    requests.storage: 100Gi # postgres 20Gi + backups 15Gi + redis 3Gi + minio media (croissance prévue)
     persistentvolumeclaims: "8"
     pods: "24"
     services: "20"

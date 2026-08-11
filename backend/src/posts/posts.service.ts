@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ReactionType } from '@prisma/client';
+import { MediaService } from '../media/media.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto, CreatePostDto } from './posts.dto';
 
@@ -11,7 +12,10 @@ const POST_INCLUDE = {
 
 @Injectable()
 export class PostsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly media: MediaService,
+  ) {}
 
   async feed(cursor?: string) {
     const items = await this.prisma.post.findMany({
@@ -43,12 +47,26 @@ export class PostsService {
   async create(userId: string, dto: CreatePostDto) {
     const body = dto.body?.trim();
     if (!body && !dto.media?.length) throw new BadRequestException('Une publication doit contenir un texte ou un média');
+
+    // Chaque média référencé doit correspondre à un objet réellement uploadé par cet utilisateur ;
+    // assertUploadedObject revérifie type/taille côté serveur et renvoie l'URL publique définitive.
+    const media = dto.media?.length
+      ? await Promise.all(
+          dto.media.map(async ({ key, type, altText }, sortOrder) => ({
+            type,
+            altText,
+            sortOrder,
+            url: await this.media.assertUploadedObject(userId, key, type),
+          })),
+        )
+      : undefined;
+
     return this.prisma.post.create({
       data: {
         authorId: userId,
         body: body || null,
         visibility: dto.visibility ?? 'PUBLIC',
-        media: dto.media?.length ? { create: dto.media.map((media, sortOrder) => ({ ...media, sortOrder })) } : undefined,
+        media: media ? { create: media } : undefined,
       },
       include: POST_INCLUDE,
     });
