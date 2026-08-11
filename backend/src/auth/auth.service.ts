@@ -1,10 +1,13 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { SiteRole } from '@prisma/client';
 import * as argon2 from 'argon2';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './auth.dto';
 
-type SessionUser = { id: string; email: string; username: string; displayName: string };
+type SessionUser = { id: string; email: string; username: string; displayName: string; role: SiteRole };
 
 // Hash bidon utilisé pour égaliser le temps de réponse quand l'utilisateur n'existe pas,
 // afin qu'un attaquant ne puisse pas déduire par le timing si un e-mail est enregistré.
@@ -13,7 +16,11 @@ const DUMMY_HASH =
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+  ) {}
 
   async register(dto: RegisterDto, ipAddress?: string, userAgent?: string) {
     const email = dto.email.trim().toLowerCase();
@@ -69,14 +76,39 @@ export class AuthService {
     return this.prisma.session.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
   }
 
+  // Résout le problème de l'œuf-et-la-poule des rôles : personne ne peut promouvoir le premier
+  // ADMIN via l'endpoint réservé aux ADMIN puisqu'il n'en existe encore aucun. Cette route
+  // s'auto-désactive dès qu'un ADMIN existe, et exige un secret côté serveur (jamais commité,
+  // cf. kubectl create secret côté infra) en plus d'être déjà authentifié.
+  async bootstrapAdmin(userId: string, token: string, ipAddress?: string, userAgent?: string) {
+    const expected = this.config.get<string>('ADMIN_BOOTSTRAP_TOKEN');
+    if (!expected) throw new ServiceUnavailableException("Bootstrap admin non configuré sur ce serveur");
+    if (!timingSafeEqual(token, expected)) throw new ForbiddenException('Jeton de bootstrap invalide');
+
+    const existingAdmin = await this.prisma.user.findFirst({ where: { role: 'ADMIN' } });
+    if (existingAdmin) throw new ForbiddenException('Un administrateur existe déjà sur ce serveur');
+
+    const user = await this.prisma.user.update({ where: { id: userId }, data: { role: 'ADMIN' } });
+    return this.createSession(user, ipAddress, userAgent);
+  }
+
   private async createSession(user: SessionUser, ipAddress?: string, userAgent?: string) {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const session = await this.prisma.session.create({
       data: { userId: user.id, refreshTokenHash: 'pending', expiresAt, ipAddress, userAgent },
     });
-    const accessToken = await this.jwt.signAsync({ sub: user.id, sid: session.id, type: 'access' }, { expiresIn: '15m' });
+    const accessToken = await this.jwt.signAsync({ sub: user.id, sid: session.id, type: 'access', role: user.role }, { expiresIn: '15m' });
     const refreshToken = await this.jwt.signAsync({ sub: user.id, sid: session.id, type: 'refresh' }, { expiresIn: '30d' });
     await this.prisma.session.update({ where: { id: session.id }, data: { refreshTokenHash: await argon2.hash(refreshToken) } });
-    return { accessToken, refreshToken, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName } };
+    return { accessToken, refreshToken, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, role: user.role } };
   }
+}
+
+// Comparaison à temps constant pour éviter qu'un attaquant ne devine le jeton de bootstrap
+// caractère par caractère via le timing des réponses (même logique que DUMMY_HASH ci-dessus).
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }

@@ -40,10 +40,16 @@ export class UsersService {
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, username: true, displayName: true, bio: true, avatarUrl: true, coverUrl: true, emailVerified: true, createdAt: true },
+      select: { id: true, email: true, username: true, displayName: true, bio: true, avatarUrl: true, coverUrl: true, emailVerified: true, role: true, createdAt: true },
     });
     if (!user) throw new NotFoundException('Profil introuvable');
     return user;
+  }
+
+  // Réservé aux ADMIN (vérifié par RolesGuard côté contrôleur, pas ici).
+  async updateRole(targetUsername: string, role: 'USER' | 'MODERATOR' | 'ADMIN') {
+    const target = await this.requireByUsername(targetUsername);
+    return this.prisma.user.update({ where: { id: target.id }, data: { role }, select: { id: true, username: true, role: true } });
   }
 
   async updateMe(userId: string, dto: UpdateProfileDto) {

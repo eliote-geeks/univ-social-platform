@@ -7,6 +7,8 @@ import { CreateCommentDto, CreatePostDto } from './posts.dto';
 
 const POST_INCLUDE = {
   author: { select: { username: true, displayName: true, avatarUrl: true } },
+  group: { select: { slug: true, name: true } },
+  page: { select: { slug: true, name: true } },
   media: { orderBy: { sortOrder: 'asc' as const } },
   _count: { select: { reactions: true, comments: true } },
 };
@@ -46,7 +48,10 @@ export class PostsService {
     return { items, nextCursor: next?.id ?? null };
   }
 
-  async create(userId: string, dto: CreatePostDto) {
+  // context n'est jamais renseigné depuis le DTO public POST /posts (qui n'expose pas ces
+  // champs) : uniquement passé par GroupsService/PagesService après avoir vérifié
+  // l'appartenance au groupe ou la propriété de la page.
+  async create(userId: string, dto: CreatePostDto, context?: { groupId?: string; pageId?: string }) {
     const body = dto.body?.trim();
     if (!body && !dto.media?.length) throw new BadRequestException('Une publication doit contenir un texte ou un média');
 
@@ -63,11 +68,19 @@ export class PostsService {
         )
       : undefined;
 
+    // Un post de groupe/page est visible à qui peut voir le groupe/la page (contrôlé par
+    // GroupsService/PagesService), pas par le champ visibility — celui-ci ne s'applique qu'au
+    // fil personnel. On l'ignore donc silencieusement dès qu'un contexte groupe/page est fourni,
+    // plutôt que de laisser un ONLY_ME fantôme réapparaître dans le fil du groupe.
+    const isScoped = !!(context?.groupId || context?.pageId);
+
     const post = await this.prisma.post.create({
       data: {
         authorId: userId,
         body: body || null,
-        visibility: dto.visibility ?? 'PUBLIC',
+        visibility: isScoped ? 'PUBLIC' : (dto.visibility ?? 'PUBLIC'),
+        groupId: context?.groupId,
+        pageId: context?.pageId,
         media: media ? { create: media } : undefined,
       },
       include: POST_INCLUDE,
@@ -75,6 +88,30 @@ export class PostsService {
 
     if (body) await this.notifications.notifyMentions(userId, body, { postId: post.id });
     return post;
+  }
+
+  async feedForGroup(groupId: string, cursor?: string) {
+    const items = await this.prisma.post.findMany({
+      where: { groupId },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: POST_INCLUDE,
+    });
+    const next = items.length > 20 ? items.pop() : undefined;
+    return { items, nextCursor: next?.id ?? null };
+  }
+
+  async feedForPage(pageId: string, cursor?: string) {
+    const items = await this.prisma.post.findMany({
+      where: { pageId },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: POST_INCLUDE,
+    });
+    const next = items.length > 20 ? items.pop() : undefined;
+    return { items, nextCursor: next?.id ?? null };
   }
 
   async findOne(id: string) {

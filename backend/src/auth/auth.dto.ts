@@ -34,6 +34,13 @@ export class RefreshDto {
   refreshToken!: string;
 }
 
+export class BootstrapAdminDto {
+  @IsString()
+  @MinLength(16)
+  @MaxLength(256)
+  token!: string;
+}
+
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()

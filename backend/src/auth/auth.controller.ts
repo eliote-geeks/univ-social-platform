@@ -4,7 +4,7 @@ import { Request } from 'express';
 import { CurrentUser } from './current-user.decorator';
 import { AuthPrincipal } from './auth.types';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, RegisterDto } from './auth.dto';
+import { BootstrapAdminDto, LoginDto, RefreshDto, RegisterDto } from './auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 // Throttle dédié, plus strict que la limite globale (120/min), pour ralentir le brute-force
@@ -39,5 +39,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(@CurrentUser() principal: AuthPrincipal) {
     await this.auth.logout(principal.sid);
+  }
+
+  @Post('bootstrap-admin')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Throttle(AUTH_THROTTLE)
+  bootstrapAdmin(@CurrentUser() principal: AuthPrincipal, @Body() dto: BootstrapAdminDto, @Req() request: Request) {
+    return this.auth.bootstrapAdmin(principal.sub, dto.token, request.ip, request.get('user-agent'));
   }
 }
