@@ -24,20 +24,37 @@ const UPLOAD_URL_TTL_SECONDS = 300;
 @Injectable()
 export class MediaService {
   private readonly s3: S3Client;
+  private readonly presignClient: S3Client;
   private readonly bucket: string;
   private readonly publicBaseUrl: string;
 
   constructor(private readonly config: ConfigService) {
     this.bucket = this.config.getOrThrow<string>('S3_BUCKET');
     this.publicBaseUrl = this.config.getOrThrow<string>('S3_PUBLIC_BASE_URL').replace(/\/+$/, '');
+    const region = this.config.get<string>('S3_REGION') ?? 'us-east-1';
+    const credentials = {
+      accessKeyId: this.config.getOrThrow<string>('S3_ACCESS_KEY'),
+      secretAccessKey: this.config.getOrThrow<string>('S3_SECRET_KEY'),
+    };
+
+    // Client "interne" : utilisé pour les appels serveur->MinIO (HEAD/DELETE) via le DNS
+    // interne au cluster, plus rapide et indépendant de l'Ingress public.
     this.s3 = new S3Client({
-      region: this.config.get<string>('S3_REGION') ?? 'us-east-1',
+      region,
       endpoint: this.config.getOrThrow<string>('S3_ENDPOINT'),
       forcePathStyle: true, // requis par MinIO (adressage par chemin, pas par sous-domaine de bucket)
-      credentials: {
-        accessKeyId: this.config.getOrThrow<string>('S3_ACCESS_KEY'),
-        secretAccessKey: this.config.getOrThrow<string>('S3_SECRET_KEY'),
-      },
+      credentials,
+    });
+
+    // Client "public" : utilisé uniquement pour signer des URLs (aucun appel réseau réel ici),
+    // avec l'endpoint public. Nécessaire pour que les URLs pré-signées renvoyées au client
+    // (navigateur, hors du cluster) pointent vers un hôte qu'il peut réellement joindre —
+    // le DNS interne au cluster ne serait pas résolvable depuis l'extérieur.
+    this.presignClient = new S3Client({
+      region,
+      endpoint: this.publicBaseUrl,
+      forcePathStyle: true,
+      credentials,
     });
   }
 
@@ -56,7 +73,7 @@ export class MediaService {
     const key = `posts/${userId}/${randomUUID()}.${ext}`;
 
     const uploadUrl = await getSignedUrl(
-      this.s3,
+      this.presignClient,
       new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: dto.contentType }),
       { expiresIn: UPLOAD_URL_TTL_SECONDS },
     );
