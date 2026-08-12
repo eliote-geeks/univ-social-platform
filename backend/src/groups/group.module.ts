@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { MediaModule } from '../media/media.module';
 import { PostsModule } from '../posts/posts.module';
 import { GroupsController } from './group.controller';
 import { GroupsService } from './group.service';
 
 @Module({
-  imports: [AuthModule, PostsModule],
+  imports: [AuthModule, MediaModule, PostsModule],
   controllers: [GroupsController],
   providers: [GroupsService],
   exports: [GroupsService],

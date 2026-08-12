@@ -44,6 +44,13 @@ export class UpdateGroupDto {
   @IsOptional()
   @IsEnum(GroupVisibility)
   visibility?: GroupVisibility;
+
+  // Clé d'objet renvoyée par POST /media/upload-url (purpose: 'cover') — voir
+  // UpdateProfileDto.avatarKey pour le patron complet (revérification côté serveur).
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  coverKey?: string;
 }
 
 export class AddGroupMemberDto {

@@ -67,4 +67,11 @@ export class PostsController {
   async removeReaction(@Param('id') id: string, @CurrentUser() principal: AuthPrincipal) {
     await this.posts.removeReaction(id, principal.sub);
   }
+
+  @Delete('posts/:id')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  async remove(@Param('id') id: string, @CurrentUser() principal: AuthPrincipal) {
+    await this.posts.remove(id, principal.sub, principal.role === 'MODERATOR' || principal.role === 'ADMIN');
+  }
 }

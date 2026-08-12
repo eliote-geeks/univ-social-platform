@@ -63,7 +63,9 @@ export function PostFeed({ feedEndpoint, composerEndpoint, canPost, emptyMessage
         </div>
       )}
 
-      {posts?.map((post) => <PostCard key={post.id} post={post} />)}
+      {posts?.map((post) => (
+        <PostCard key={post.id} post={post} onDeleted={(id) => setPosts((prev) => prev?.filter((p) => p.id !== id) ?? prev)} />
+      ))}
 
       {cursor && (
         <div className="text-center mb-4">

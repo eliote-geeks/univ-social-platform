@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { use, useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
@@ -38,6 +39,7 @@ function CommentRow({ comment }: { comment: Comment }) {
 
 export default function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const { user } = useAuth();
   const [post, setPost] = useState<PostDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -104,7 +106,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div>
-      <PostCard post={post} />
+      <PostCard post={post} onDeleted={() => router.push('/')} />
 
       <div className="card">
         <div className="card-header">

@@ -45,4 +45,16 @@ export class UpdatePageDto {
   @IsString()
   @MaxLength(60)
   category?: string;
+
+  // Clés d'objet renvoyées par POST /media/upload-url (purpose: 'avatar'/'cover') — voir
+  // UpdateProfileDto.avatarKey pour le patron complet (revérification côté serveur).
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  avatarKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  coverKey?: string;
 }

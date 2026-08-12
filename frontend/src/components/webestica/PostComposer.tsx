@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
@@ -16,6 +17,7 @@ export function PostComposer({ onCreated, endpoint = '/posts', placeholder }: { 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
 
@@ -34,6 +36,7 @@ export function PostComposer({ onCreated, endpoint = '/posts', placeholder }: { 
     setFile(null);
     setPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (videoInputRef.current) videoInputRef.current.value = '';
   }
 
   async function onSubmit(event: React.FormEvent) {
@@ -99,10 +102,28 @@ export function PostComposer({ onCreated, endpoint = '/posts', placeholder }: { 
           {error && <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div>}
 
           <div className="d-flex justify-content-between align-items-center mt-3">
-            <label className="btn btn-light btn-sm mb-0">
-              <i className="bi bi-image me-1" /> Photo/Vidéo
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" hidden onChange={onPickFile} />
-            </label>
+            <ul className="nav nav-pills nav-stack small fw-normal mb-0">
+              <li className="nav-item">
+                <label className="nav-link bg-light py-1 px-2 mb-0 cursor-pointer">
+                  <i className="bi bi-image-fill text-success pe-2" />
+                  Photo
+                  <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={onPickFile} />
+                </label>
+              </li>
+              <li className="nav-item">
+                <label className="nav-link bg-light py-1 px-2 mb-0 cursor-pointer">
+                  <i className="bi bi-camera-reels-fill text-info pe-2" />
+                  Vidéo
+                  <input ref={videoInputRef} type="file" accept="video/mp4,video/webm" hidden onChange={onPickFile} />
+                </label>
+              </li>
+              <li className="nav-item">
+                <Link className="nav-link bg-light py-1 px-2 mb-0" href="/events/new">
+                  <i className="bi bi-calendar2-event-fill text-danger pe-2" />
+                  Événement
+                </Link>
+              </li>
+            </ul>
             <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || (!body.trim() && !file)}>
               {submitting ? 'Publication…' : 'Publier'}
             </button>

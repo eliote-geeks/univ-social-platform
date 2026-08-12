@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { uniqueSlug } from '../common/slugify';
+import { MediaService } from '../media/media.service';
 import { CreatePostDto } from '../posts/posts.dto';
 import { PostsService } from '../posts/posts.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,6 +35,7 @@ export class PagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posts: PostsService,
+    private readonly media: MediaService,
   ) {}
 
   async create(userId: string, name: string, description: string | undefined, category: string | undefined) {
@@ -72,15 +74,19 @@ export class PagesService {
     if (page.ownerId !== requesterId) throw new ForbiddenException('Action réservée au gestionnaire de la page');
   }
 
-  async update(slug: string, requesterId: string, dto: { name?: string; description?: string; category?: string }) {
+  async update(slug: string, requesterId: string, dto: { name?: string; description?: string; category?: string; avatarKey?: string; coverKey?: string }) {
     const page = await this.resolvePage(slug);
     this.requireOwner(page, requesterId);
+    const avatarUrl = dto.avatarKey !== undefined ? await this.media.assertUploadedObject(requesterId, dto.avatarKey, 'IMAGE', 'avatar') : undefined;
+    const coverUrl = dto.coverKey !== undefined ? await this.media.assertUploadedObject(requesterId, dto.coverKey, 'IMAGE', 'cover') : undefined;
     return this.prisma.page.update({
       where: { id: page.id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
         ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
         ...(dto.category !== undefined ? { category: dto.category.trim() } : {}),
+        ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        ...(coverUrl !== undefined ? { coverUrl } : {}),
       },
       select: PAGE_SELECT,
     });

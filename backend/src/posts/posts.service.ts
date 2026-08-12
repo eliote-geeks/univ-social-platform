@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ReactionType } from '@prisma/client';
 import { MediaService } from '../media/media.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -208,5 +208,18 @@ export class PostsService {
 
   async removeReaction(postId: string, userId: string) {
     await this.prisma.reaction.deleteMany({ where: { postId, userId } });
+  }
+
+  // canModerateAll (MODERATOR/ADMIN) vient du rôle du JWT, pas d'une revérification en base —
+  // cohérent avec RolesGuard ailleurs dans l'appli. Les objets média sur MinIO ne sont pas
+  // supprimés ici (pas de clé stockée en base, seulement l'URL publique finale) : orphelins
+  // acceptés, comme pour le remplacement d'avatar/couverture.
+  async remove(postId: string, userId: string, canModerateAll: boolean) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true, authorId: true } });
+    if (!post) throw new NotFoundException('Publication introuvable');
+    if (post.authorId !== userId && !canModerateAll) {
+      throw new ForbiddenException('Tu ne peux supprimer que tes propres publications');
+    }
+    await this.prisma.post.delete({ where: { id: postId } });
   }
 }

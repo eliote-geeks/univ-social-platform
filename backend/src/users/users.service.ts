@@ -24,6 +24,18 @@ export class UsersService {
     return user;
   }
 
+  // Widget "Qui suivre" du fil d'actu : quelques comptes actifs pas encore suivis par le
+  // visiteur, hors lui-même. Tri par inscription récente, faute d'un vrai signal de pertinence
+  // (centres d'intérêt communs, etc.) pour l'instant.
+  async suggestions(viewerId: string, limit = 5) {
+    return this.prisma.user.findMany({
+      where: { id: { not: viewerId }, status: 'ACTIVE', followers: { none: { followerId: viewerId } } },
+      select: PROFILE_SUMMARY_SELECT,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
+
   async publicProfile(username: string, viewerId?: string) {
     const user = await this.prisma.user.findUnique({
       where: { username },

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { MediaService } from '../media/media.service';
 import { CreatePostDto } from '../posts/posts.dto';
 import { PostsService } from '../posts/posts.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,6 +34,7 @@ export class GroupsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posts: PostsService,
+    private readonly media: MediaService,
   ) {}
 
   async create(userId: string, name: string, description: string | undefined, visibility: 'PUBLIC' | 'PRIVATE' | undefined) {
@@ -179,15 +181,17 @@ export class GroupsService {
     return { groupId: group.id, deleted: false, promotedUserId };
   }
 
-  async update(slug: string, requesterId: string, dto: { name?: string; description?: string; visibility?: 'PUBLIC' | 'PRIVATE' }) {
+  async update(slug: string, requesterId: string, dto: { name?: string; description?: string; visibility?: 'PUBLIC' | 'PRIVATE'; coverKey?: string }) {
     const group = await this.resolveGroup(slug);
     const membership = await this.requireManager(group.id, requesterId);
+    const coverUrl = dto.coverKey !== undefined ? await this.media.assertUploadedObject(requesterId, dto.coverKey, 'IMAGE', 'cover') : undefined;
     const updated = await this.prisma.group.update({
       where: { id: group.id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
         ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
         ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
+        ...(coverUrl !== undefined ? { coverUrl } : {}),
       },
       select: GROUP_SELECT,
     });

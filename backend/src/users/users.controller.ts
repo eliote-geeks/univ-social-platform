@@ -39,6 +39,14 @@ export class UsersController {
     return this.users.updateMe(principal.sub, dto);
   }
 
+  // Doit être déclaré avant @Get(':username') : sinon Nest matcherait "suggestions" comme valeur
+  // du paramètre :username (les routes statiques doivent précéder les routes à paramètre).
+  @Get('suggestions')
+  @UseGuards(JwtAuthGuard)
+  suggestions(@CurrentUser() principal: AuthPrincipal) {
+    return this.users.suggestions(principal.sub);
+  }
+
   @Get(':username')
   @UseGuards(OptionalJwtAuthGuard)
   publicProfile(@Param('username') username: string, @OptionalUser() principal: AuthPrincipal | undefined) {
