@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: univ-social/api:0.2.6
+          image: univ-social/api:0.2.7
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
