@@ -30,6 +30,11 @@ export class MessagingController {
     return conversation;
   }
 
+  @Get('conversations/:id')
+  getConversation(@Param('id') id: string, @CurrentUser() principal: AuthPrincipal) {
+    return this.messaging.getConversation(id, principal.sub);
+  }
+
   @Get('conversations/:id/messages')
   messages(@Param('id') id: string, @CurrentUser() principal: AuthPrincipal, @Query() query: CursorQueryDto) {
     return this.messaging.listMessages(id, principal.sub, query.cursor);

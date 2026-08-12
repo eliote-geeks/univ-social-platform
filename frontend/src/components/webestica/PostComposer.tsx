@@ -6,7 +6,9 @@ import { useAuth } from '@/lib/auth-context';
 import { mediaTypeForFile, uploadMedia } from '@/lib/media-upload';
 import type { Post } from '@/lib/types';
 
-export function PostComposer({ onCreated }: { onCreated: (post: Post) => void }) {
+// endpoint : /posts par défaut (fil personnel), ou /groups/:slug/posts /pages/:slug/posts pour
+// publier dans le contexte d'un groupe/d'une page (même DTO, seule la route change).
+export function PostComposer({ onCreated, endpoint = '/posts', placeholder }: { onCreated: (post: Post) => void; endpoint?: string; placeholder?: string }) {
   const { user } = useAuth();
   const [body, setBody] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -46,7 +48,7 @@ export function PostComposer({ onCreated }: { onCreated: (post: Post) => void })
         const key = await uploadMedia(file, type);
         media.push({ type, key });
       }
-      const post = await apiFetch<Post>('/posts', { method: 'POST', body: { body: body.trim() || undefined, media: media.length ? media : undefined } });
+      const post = await apiFetch<Post>(endpoint, { method: 'POST', body: { body: body.trim() || undefined, media: media.length ? media : undefined } });
       onCreated(post);
       setBody('');
       clearFile();
@@ -74,7 +76,7 @@ export function PostComposer({ onCreated }: { onCreated: (post: Post) => void })
             <textarea
               className="form-control border-0 bg-light"
               rows={2}
-              placeholder="Quoi de neuf sur le campus ?"
+              placeholder={placeholder ?? 'Quoi de neuf sur le campus ?'}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               maxLength={5000}

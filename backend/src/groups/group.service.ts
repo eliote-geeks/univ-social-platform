@@ -17,6 +17,17 @@ const GROUP_SELECT = {
   _count: { select: { members: true } },
 } as const;
 
+// Même patron que myReactionInclude côté posts : ne ramène (au plus) que la ligne de membership
+// du visiteur courant, jamais celle des autres — le frontend en a besoin pour savoir s'il doit
+// afficher "Rejoindre" / "Quitter" / les contrôles d'administration.
+function groupSelectFor(viewerId?: string) {
+  return { ...GROUP_SELECT, ...(viewerId ? { members: { where: { userId: viewerId }, select: { role: true } } } : {}) };
+}
+function withMyRole<T extends { members?: { role: string }[] }>(group: T) {
+  const { members, ...rest } = group;
+  return { ...rest, myRole: members?.[0]?.role ?? null };
+}
+
 @Injectable()
 export class GroupsService {
   constructor(
@@ -37,7 +48,7 @@ export class GroupsService {
       },
       select: GROUP_SELECT,
     });
-    return group;
+    return { ...group, myRole: 'OWNER' as const };
   }
 
   async list(requesterId: string | undefined, q: string | undefined, cursor?: string) {
@@ -49,21 +60,21 @@ export class GroupsService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 21,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: GROUP_SELECT,
+      select: groupSelectFor(requesterId),
     });
     const next = rows.length > 20 ? rows.pop() : undefined;
-    return { items: rows, nextCursor: next?.id ?? null };
+    return { items: rows.map(withMyRole), nextCursor: next?.id ?? null };
   }
 
   async getBySlug(slug: string, requesterId?: string) {
-    const group = await this.prisma.group.findUnique({ where: { slug }, select: GROUP_SELECT });
+    const group = await this.prisma.group.findUnique({ where: { slug }, select: groupSelectFor(requesterId) });
     if (!group) throw new NotFoundException('Groupe introuvable');
     if (group.visibility === 'PRIVATE') {
       const isMember = requesterId ? await this.isMember(group.id, requesterId) : false;
       // 404 (pas 403) pour ne pas révéler l'existence d'un groupe privé à qui n'y est pas.
       if (!isMember) throw new NotFoundException('Groupe introuvable');
     }
-    return group;
+    return withMyRole(group);
   }
 
   private async resolveGroup(slug: string) {
@@ -170,7 +181,7 @@ export class GroupsService {
 
   async update(slug: string, requesterId: string, dto: { name?: string; description?: string; visibility?: 'PUBLIC' | 'PRIVATE' }) {
     const group = await this.resolveGroup(slug);
-    await this.requireManager(group.id, requesterId);
+    const membership = await this.requireManager(group.id, requesterId);
     const updated = await this.prisma.group.update({
       where: { id: group.id },
       data: {
@@ -180,7 +191,7 @@ export class GroupsService {
       },
       select: GROUP_SELECT,
     });
-    return updated;
+    return { ...updated, myRole: membership.role };
   }
 
   async remove(slug: string, requesterId: string) {

@@ -10,6 +10,16 @@ const EVENT_INCLUDE = {
   _count: { select: { attendees: true } },
 } as const;
 
+// Même patron que myReactionInclude (posts) / groupSelectFor (groupes) : ne ramène (au plus)
+// que le RSVP du visiteur courant.
+function eventIncludeFor(viewerId?: string) {
+  return { ...EVENT_INCLUDE, ...(viewerId ? { attendees: { where: { userId: viewerId }, select: { status: true } } } : {}) };
+}
+function withMyStatus<T extends { attendees?: { status: EventRsvpStatus }[] }>(event: T) {
+  const { attendees, ...rest } = event;
+  return { ...rest, myStatus: attendees?.[0]?.status ?? null };
+}
+
 @Injectable()
 export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -56,25 +66,25 @@ export class EventsService {
       },
       include: EVENT_INCLUDE,
     });
-    return event;
+    return { ...event, myStatus: 'GOING' as const };
   }
 
-  async list(filters: { groupId?: string; pageId?: string }, cursor?: string) {
+  async list(filters: { groupId?: string; pageId?: string }, cursor?: string, viewerId?: string) {
     const rows = await this.prisma.event.findMany({
       where: { ...(filters.groupId ? { groupId: filters.groupId } : {}), ...(filters.pageId ? { pageId: filters.pageId } : {}) },
       orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
       take: 21,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: EVENT_INCLUDE,
+      include: eventIncludeFor(viewerId),
     });
     const next = rows.length > 20 ? rows.pop() : undefined;
-    return { items: rows, nextCursor: next?.id ?? null };
+    return { items: rows.map(withMyStatus), nextCursor: next?.id ?? null };
   }
 
-  async getById(id: string) {
-    const event = await this.prisma.event.findUnique({ where: { id }, include: EVENT_INCLUDE });
+  async getById(id: string, viewerId?: string) {
+    const event = await this.prisma.event.findUnique({ where: { id }, include: eventIncludeFor(viewerId) });
     if (!event) throw new NotFoundException('Événement introuvable');
-    return event;
+    return withMyStatus(event);
   }
 
   private async resolveEvent(id: string) {

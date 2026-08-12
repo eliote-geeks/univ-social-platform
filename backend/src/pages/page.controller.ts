@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { AuthPrincipal } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { OptionalUser } from '../auth/optional-user.decorator';
 import { CreatePostDto } from '../posts/posts.dto';
 import { CreatePageDto, CursorQueryDto, UpdatePageDto } from './page.dto';
 import { PagesService } from './page.service';
@@ -11,8 +13,9 @@ export class PagesController {
   constructor(private readonly pages: PagesService) {}
 
   @Get()
-  list(@Query() query: CursorQueryDto) {
-    return this.pages.list(query.q, query.cursor);
+  @UseGuards(OptionalJwtAuthGuard)
+  list(@Query() query: CursorQueryDto, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.pages.list(query.q, query.cursor, principal?.sub);
   }
 
   @Post()
@@ -22,8 +25,9 @@ export class PagesController {
   }
 
   @Get(':slug')
-  getBySlug(@Param('slug') slug: string) {
-    return this.pages.getBySlug(slug);
+  @UseGuards(OptionalJwtAuthGuard)
+  getBySlug(@Param('slug') slug: string, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.pages.getBySlug(slug, principal?.sub);
   }
 
   @Patch(':slug')

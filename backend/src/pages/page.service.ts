@@ -18,6 +18,17 @@ const PAGE_SELECT = {
   _count: { select: { followers: true } },
 } as const;
 
+// L'ownerId ne change jamais (pas de transfert de propriété sur une Page, contrairement à
+// l'OWNER d'un groupe) : owner.id dans PAGE_SELECT suffit pour dériver l'admin côté client.
+// isFollowing reste nécessaire en revanche : même patron que myReactionInclude côté posts.
+function pageSelectFor(viewerId?: string) {
+  return { ...PAGE_SELECT, ...(viewerId ? { followers: { where: { userId: viewerId }, select: { userId: true } } } : {}) };
+}
+function withIsFollowing<T extends { followers?: unknown[] }>(page: T) {
+  const { followers, ...rest } = page;
+  return { ...rest, isFollowing: !!followers?.length };
+}
+
 @Injectable()
 export class PagesService {
   constructor(
@@ -33,22 +44,22 @@ export class PagesService {
     });
   }
 
-  async list(q: string | undefined, cursor?: string) {
+  async list(q: string | undefined, cursor?: string, viewerId?: string) {
     const rows = await this.prisma.page.findMany({
       where: q ? { name: { contains: q, mode: 'insensitive' as const } } : undefined,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 21,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: PAGE_SELECT,
+      select: pageSelectFor(viewerId),
     });
     const next = rows.length > 20 ? rows.pop() : undefined;
-    return { items: rows, nextCursor: next?.id ?? null };
+    return { items: rows.map(withIsFollowing), nextCursor: next?.id ?? null };
   }
 
-  async getBySlug(slug: string) {
-    const page = await this.prisma.page.findUnique({ where: { slug }, select: PAGE_SELECT });
+  async getBySlug(slug: string, viewerId?: string) {
+    const page = await this.prisma.page.findUnique({ where: { slug }, select: pageSelectFor(viewerId) });
     if (!page) throw new NotFoundException('Page introuvable');
-    return page;
+    return withIsFollowing(page);
   }
 
   private async resolvePage(slug: string) {

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { apiFetch, ApiError } from './api-client';
+import { disconnectSocket } from './socket';
 import { tokenStore } from './token-store';
 import type { Me } from './types';
 
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // l'utilisateur s'attend à être déconnecté localement dans tous les cas.
     }
     tokenStore.clear();
+    disconnectSocket();
     setUser(null);
   }, []);
 

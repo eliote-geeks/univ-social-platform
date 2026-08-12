@@ -87,10 +87,10 @@ export function PostCard({ post }: { post: Post }) {
             <i className={`bi ${liked ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'} me-1`} />
             {count > 0 ? count : "J'aime"}
           </button>
-          <span className="small text-body-secondary">
+          <Link href={`/posts/${post.id}`} className="small text-body-secondary text-decoration-none">
             <i className="bi bi-chat me-1" />
             {post._count.comments} commentaire{post._count.comments > 1 ? 's' : ''}
-          </span>
+          </Link>
         </div>
       </div>
     </div>

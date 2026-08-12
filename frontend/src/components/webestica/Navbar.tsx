@@ -1,14 +1,43 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState, type FormEvent } from 'react';
+import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
 export function Navbar() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [search, setSearch] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- voir lib/auth-context.tsx
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    const poll = () => {
+      apiFetch<{ count: number }>('/notifications/unread-count')
+        .then((r) => {
+          if (!cancelled) setUnreadCount(r.count);
+        })
+        .catch(() => {});
+    };
+    poll();
+    // Pas de push temps réel pour les notifications (contrairement à la messagerie qui a un
+    // vrai gateway WebSocket) : un polling simple suffit pour ce volume d'usage.
+    const interval = setInterval(poll, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // Revérifie aussi à chaque changement de page (ex: retour de /notifications qui vient de
+    // tout marquer comme lu).
+  }, [user, pathname]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -93,8 +122,13 @@ export function Navbar() {
                   </Link>
                 </li>
                 <li className="nav-item ms-2">
-                  <Link className="nav-link bg-light icon-md btn btn-light p-0" href="/notifications">
+                  <Link className="nav-link bg-light icon-md btn btn-light p-0 position-relative" href="/notifications">
                     <i className="bi bi-bell-fill fs-6" />
+                    {unreadCount > 0 && (
+                      <span className="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle" style={{ fontSize: '0.6rem' }}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                   </Link>
                 </li>
                 <li className="nav-item ms-2 dropdown">

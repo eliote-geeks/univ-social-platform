@@ -181,6 +181,13 @@ export class MessagingService {
     return { items, nextCursor: next?.id ?? null };
   }
 
+  // Métadonnées d'une conversation (titre, participants, mon rôle) : nécessaire à l'en-tête de
+  // la page de conversation, distinct de listMessages qui ne renvoie que les messages.
+  async getConversation(conversationId: string, userId: string) {
+    await this.assertParticipant(conversationId, userId);
+    return this.shapeConversation(conversationId, userId);
+  }
+
   async listMessages(conversationId: string, userId: string, cursor?: string) {
     await this.assertParticipant(conversationId, userId);
 

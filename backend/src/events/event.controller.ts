@@ -4,6 +4,8 @@ import { IsEnum, IsOptional } from 'class-validator';
 import { AuthPrincipal } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { OptionalUser } from '../auth/optional-user.decorator';
 import { CreateEventDto, CursorQueryDto, RsvpDto, UpdateEventDto } from './event.dto';
 import { EventsService } from './event.service';
 
@@ -18,8 +20,9 @@ export class EventsController {
   constructor(private readonly events: EventsService) {}
 
   @Get()
-  list(@Query() query: CursorQueryDto) {
-    return this.events.list({ groupId: query.groupId, pageId: query.pageId }, query.cursor);
+  @UseGuards(OptionalJwtAuthGuard)
+  list(@Query() query: CursorQueryDto, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.events.list({ groupId: query.groupId, pageId: query.pageId }, query.cursor, principal?.sub);
   }
 
   @Post()
@@ -29,8 +32,9 @@ export class EventsController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.events.getById(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  getById(@Param('id') id: string, @OptionalUser() principal: AuthPrincipal | undefined) {
+    return this.events.getById(id, principal?.sub);
   }
 
   @Patch(':id')
