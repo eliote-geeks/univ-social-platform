@@ -20,6 +20,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
         <link rel="icon" href="/webestica/images/favicon.ico" />
         <link rel="stylesheet" href="/webestica/vendor/font-awesome/css/all.min.css" />
         <link rel="stylesheet" href="/webestica/vendor/bootstrap-icons/bootstrap-icons.css" />
+        <link rel="stylesheet" href="/webestica/vendor/glightbox/css/glightbox.min.css" />
         <link rel="stylesheet" href="/webestica/css/style.css" />
       </head>
       <body className={inter.className}>
@@ -27,6 +28,8 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
         {/* Bundle Bootstrap (JS pur, sans jQuery) : nécessaire pour les dropdowns/offcanvas/collapse
             du thème, pilotés en pur data-attributes — aucun wrapper React requis. */}
         <Script src="/webestica/vendor/bootstrap/dist/js/bootstrap.bundle.min.js" strategy="afterInteractive" />
+        {/* Visionneuse plein écran pour les grilles de photos (profil, albums) — voir useLightbox. */}
+        <Script src="/webestica/vendor/glightbox/js/glightbox.min.js" strategy="afterInteractive" />
       </body>
     </html>
   );

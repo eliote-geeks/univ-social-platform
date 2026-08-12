@@ -31,6 +31,12 @@ export class PostsController {
     return this.posts.feedFollowing(principal.sub, query.cursor);
   }
 
+  @Get('users/:username/posts')
+  @UseGuards(OptionalJwtAuthGuard)
+  byAuthor(@Param('username') username: string, @OptionalUser() principal: AuthPrincipal | undefined, @Query() query: FeedQueryDto) {
+    return this.posts.byAuthor(username, query.cursor, principal?.sub);
+  }
+
   @Post('posts')
   @UseGuards(JwtAuthGuard)
   create(@CurrentUser() principal: AuthPrincipal, @Body() dto: CreatePostDto) {

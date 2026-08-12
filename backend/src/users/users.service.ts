@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateProfileDto } from '../auth/auth.dto';
+import { MediaService } from '../media/media.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -14,6 +15,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly media: MediaService,
   ) {}
 
   private async requireByUsername(username: string) {
@@ -30,7 +32,10 @@ export class UsersService {
         username: true,
         displayName: true,
         avatarUrl: true,
+        coverUrl: true,
         bio: true,
+        role: true,
+        createdAt: true,
         _count: { select: { followers: true, following: true, posts: true } },
         // Ne ramène (au plus) que la ligne de suivi du visiteur courant, jamais celle des
         // autres — d'où isFollowing dérivé ci-dessous plutôt qu'exposé tel quel.
@@ -58,9 +63,21 @@ export class UsersService {
   }
 
   async updateMe(userId: string, dto: UpdateProfileDto) {
+    // Les clés viennent de POST /media/upload-url (purpose: 'avatar'/'cover') : on revérifie ici
+    // qu'elles pointent bien vers un objet réellement uploadé par cet utilisateur, du bon type,
+    // avant de les convertir en URL publique définitive — jamais confiance dans une URL fournie
+    // telle quelle par le client (même patron que les médias de post).
+    const avatarUrl = dto.avatarKey !== undefined ? await this.media.assertUploadedObject(userId, dto.avatarKey, 'IMAGE', 'avatar') : undefined;
+    const coverUrl = dto.coverKey !== undefined ? await this.media.assertUploadedObject(userId, dto.coverKey, 'IMAGE', 'cover') : undefined;
+
     return this.prisma.user.update({
       where: { id: userId },
-      data: { ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}), ...(dto.bio !== undefined ? { bio: dto.bio.trim() } : {}) },
+      data: {
+        ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
+        ...(dto.bio !== undefined ? { bio: dto.bio.trim() } : {}),
+        ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        ...(coverUrl !== undefined ? { coverUrl } : {}),
+      },
       select: { id: true, username: true, displayName: true, bio: true, avatarUrl: true, coverUrl: true },
     });
   }

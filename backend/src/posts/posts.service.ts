@@ -103,6 +103,35 @@ export class PostsService {
     return post;
   }
 
+  // Fil "Publications" du profil : uniquement les posts personnels (jamais ceux postés dans un
+  // groupe/une page, déjà visibles dans leur propre fil) et filtrés par visibilité comme le reste
+  // de l'appli — tout pour le propriétaire, PUBLIC+FOLLOWERS pour un abonné, PUBLIC pour les autres.
+  async byAuthor(username: string, cursor?: string, viewerId?: string) {
+    const author = await this.prisma.user.findUnique({ where: { username }, select: { id: true } });
+    if (!author) throw new NotFoundException('Profil introuvable');
+
+    const isSelf = viewerId === author.id;
+    const isFollowing =
+      !isSelf && viewerId
+        ? !!(await this.prisma.follow.findUnique({ where: { followerId_followingId: { followerId: viewerId, followingId: author.id } } }))
+        : false;
+
+    const items = await this.prisma.post.findMany({
+      where: {
+        authorId: author.id,
+        groupId: null,
+        pageId: null,
+        ...(isSelf ? {} : { visibility: isFollowing ? { in: ['PUBLIC', 'FOLLOWERS'] as const } : 'PUBLIC' }),
+      },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { ...POST_INCLUDE, ...myReactionInclude(viewerId) },
+    });
+    const next = items.length > 20 ? items.pop() : undefined;
+    return { items: items.map(withMyReaction), nextCursor: next?.id ?? null };
+  }
+
   async feedForGroup(groupId: string, cursor?: string) {
     const items = await this.prisma.post.findMany({
       where: { groupId },

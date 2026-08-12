@@ -23,10 +23,10 @@ interface UploadUrlResponse {
 // (2) le navigateur uploade directement vers MinIO (jamais via notre API — évite de faire
 // transiter des Mo de vidéo par le serveur Node). La clé renvoyée sert ensuite de référence dans
 // CreatePostDto.media[].key ; le serveur revérifie l'objet réellement uploadé à la création du post.
-export async function uploadMedia(file: File, mediaType: MediaType): Promise<string> {
+export async function uploadMedia(file: File, mediaType: MediaType, purpose?: 'post' | 'avatar' | 'cover'): Promise<string> {
   const { uploadUrl, key, requiredHeaders } = await apiFetch<UploadUrlResponse>('/media/upload-url', {
     method: 'POST',
-    body: { mediaType, contentType: file.type, sizeBytes: file.size },
+    body: { mediaType, contentType: file.type, sizeBytes: file.size, purpose },
   });
 
   const putResponse = await fetch(uploadUrl, {

@@ -4,7 +4,13 @@ import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } fr
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import { MediaType } from '@prisma/client';
-import { CONTENT_TYPE_BY_MEDIA_TYPE, CreateUploadUrlDto } from './media.dto';
+import { CONTENT_TYPE_BY_MEDIA_TYPE, CreateUploadUrlDto, UploadPurpose } from './media.dto';
+
+const KEY_PREFIX_BY_PURPOSE: Record<UploadPurpose, string> = {
+  post: 'posts',
+  avatar: 'avatars',
+  cover: 'covers',
+};
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -60,6 +66,10 @@ export class MediaService {
 
   /** Génère une URL PUT pré-signée : le client uploade directement vers MinIO, sans passer par l'API. */
   async createUploadUrl(userId: string, dto: CreateUploadUrlDto) {
+    const purpose = dto.purpose ?? 'post';
+    if (purpose !== 'post' && dto.mediaType !== 'IMAGE') {
+      throw new BadRequestException('Seule une image est acceptée pour un avatar ou une couverture');
+    }
     const allowedTypes = CONTENT_TYPE_BY_MEDIA_TYPE[dto.mediaType];
     if (!allowedTypes.includes(dto.contentType)) {
       throw new BadRequestException(`Type de contenu non autorisé pour ${dto.mediaType}`);
@@ -70,7 +80,7 @@ export class MediaService {
     }
 
     const ext = EXT_BY_CONTENT_TYPE[dto.contentType];
-    const key = `posts/${userId}/${randomUUID()}.${ext}`;
+    const key = `${KEY_PREFIX_BY_PURPOSE[purpose]}/${userId}/${randomUUID()}.${ext}`;
 
     const uploadUrl = await getSignedUrl(
       this.presignClient,
@@ -92,8 +102,8 @@ export class MediaService {
    * limites annoncées. Un client pourrait ignorer les contraintes côté client, donc on revérifie
    * côté serveur à partir des métadonnées réelles de l'objet uploadé.
    */
-  async assertUploadedObject(userId: string, key: string, mediaType: MediaType): Promise<string> {
-    if (!key.startsWith(`posts/${userId}/`) || key.includes('..')) {
+  async assertUploadedObject(userId: string, key: string, mediaType: MediaType, purpose: UploadPurpose = 'post'): Promise<string> {
+    if (!key.startsWith(`${KEY_PREFIX_BY_PURPOSE[purpose]}/${userId}/`) || key.includes('..')) {
       throw new BadRequestException('Média invalide');
     }
 

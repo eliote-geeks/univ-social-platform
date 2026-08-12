@@ -52,4 +52,17 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(500)
   bio?: string;
+
+  // Clé d'objet renvoyée par POST /media/upload-url (purpose: 'avatar'/'cover'), pas une URL :
+  // UsersService revérifie côté serveur (existence, propriétaire, type) via MediaService avant
+  // de la convertir en avatarUrl/coverUrl définitive — même patron que CreatePostDto.media[].key.
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  avatarKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  coverKey?: string;
 }

@@ -174,6 +174,15 @@ export function Navbar() {
                       </Link>
                     </li>
                     <li>
+                      <Link className="dropdown-item" href="/settings/profile">
+                        <i className="bi bi-gear fa-fw pe-2" />
+                        Modifier le profil
+                      </Link>
+                    </li>
+                    <li>
+                      <hr className="dropdown-divider" />
+                    </li>
+                    <li>
                       <button type="button" className="dropdown-item bg-danger-soft-hover" onClick={onLogout}>
                         <i className="bi bi-power fa-fw me-2" />
                         Se déconnecter

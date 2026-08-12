@@ -76,7 +76,10 @@ export interface PublicProfile {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  coverUrl: string | null;
   bio: string | null;
+  role: SiteRole;
+  createdAt: string;
   _count: { followers: number; following: number; posts: number };
   isFollowing: boolean;
   isSelf: boolean;

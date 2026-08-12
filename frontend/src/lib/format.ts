@@ -12,3 +12,8 @@ export function relativeTime(iso: string): string {
   if (diffDay < 7) return `${diffDay} j`;
   return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+// "octobre 2025" — utilisé pour "Membre depuis …" sur les profils.
+export function monthYear(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+}
