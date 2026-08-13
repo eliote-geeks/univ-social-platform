@@ -44,7 +44,7 @@ spec:
         - name: web
           # NEXT_PUBLIC_API_BASE_URL est inliné au build (cf. Dockerfile), pas configurable ici :
           # image reconstruite si l'URL publique de l'API change.
-          image: univ-social/web:0.1.2
+          image: univ-social/web:0.1.3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
