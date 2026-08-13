@@ -47,7 +47,23 @@ docker build --network=host \
   -t "$image" "$WEB_DIR"
 
 echo "==> Transfert de l'image vers ${REMOTE_HOST} (containerd, namespace k8s.io)"
-docker save "$image" | ssh "$REMOTE_HOST" "sudo k3s ctr images import -"
+# rsync --partial (pas un pipe direct docker save | ssh) : la liaison de cet environnement coupe
+# parfois les transferts longs en cours de route (Connection reset / Network unreachable) ;
+# --partial permet de reprendre depuis ce qui a déjà été transféré plutôt que de repartir de zéro
+# à chaque tentative. -z compresse (le tar de `docker save` n'est pas recompressé, contrairement à
+# une image tirée d'un registry, donc ça réduit réellement le volume transféré).
+tmp_tar="$(mktemp)"
+trap 'rm -f "$tmp_tar"' EXIT
+docker save "$image" -o "$tmp_tar"
+for attempt in 1 2 3 4 5; do
+  if rsync -az --partial --timeout=60 "$tmp_tar" "${REMOTE_HOST}:/tmp/deploy-web-image.tar"; then
+    break
+  fi
+  echo "   tentative ${attempt} de transfert échouée, on retente..." >&2
+  [[ $attempt -eq 5 ]] && { echo "❌ Transfert impossible après 5 tentatives" >&2; exit 1; }
+  sleep 5
+done
+ssh "$REMOTE_HOST" "sudo k3s ctr images import /tmp/deploy-web-image.tar && rm -f /tmp/deploy-web-image.tar"
 
 echo "==> Mise à jour du manifeste (${current_version} -> ${new_version})"
 sed -i "s#${IMAGE_REPO}:${current_version}#${image}#" "$MANIFEST"
